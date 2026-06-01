@@ -1,12 +1,24 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --python 3.12 --with \"langfuse>=3.0,<4.0\" \"${CLAUDE_PLUGIN_ROOT}/bin/run_hook.py\" --warmup",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/run-hook.sh",
+            "command": "uv run --no-project --python 3.12 --with \"langfuse>=3.0,<4.0\" \"${CLAUDE_PLUGIN_ROOT}/bin/run_hook.py\"",
             "timeout": 60
           }
         ]

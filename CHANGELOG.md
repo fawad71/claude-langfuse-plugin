@@ -3,6 +3,26 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-01
+
+### Changed
+- **Cross-platform launcher.** Replaced the Unix-only `bin/run-hook.sh` with a
+  single OS-agnostic hook command —
+  `uv run --no-project --with "langfuse>=3.0,<4.0" bin/run_hook.py` — and a new
+  cross-platform Python entry script `bin/run_hook.py`. The plugin now works on
+  **Windows** as well as macOS/Linux.
+- **Runtime simplified.** uv's cached per-requirements environment replaces the
+  manual venv build, dep-marker, and background-build logic. `--no-project`
+  ensures no `.venv` is created in the user's project directory. This also
+  removes the first-run 30s-timeout failure mode.
+- Added a **SessionStart `--warmup`** hook so uv's environment is resolved once
+  per session before the first traced turn.
+
+### Removed
+- `bin/run-hook.sh` and its bash-only remediation messages for
+  uv-missing / venv-build-failed. `uv` is now a documented hard prerequisite;
+  the Python-side **config-incomplete** message is retained.
+
 ## [0.1.0] - 2026-06-01
 
 Initial release. Repackages the `claude-code-langfuse-hook` tracer as a Claude

@@ -2,29 +2,36 @@
 
 Automatically traces every Claude Code turn to **Langfuse** — prompts,
 responses, tool calls, token usage and cost, per user and per project. Install
-the plugin once; it wires up its own Stop hook and runs in a private, isolated
-Python environment. No `pip install`, no editing of settings files.
+the plugin once; it wires up its own Stop hook. Works on **macOS, Linux, and
+Windows**.
 
 ## Setup (3 steps)
 
-1. **Add the plugin and install it**
+1. **Install `uv` once** *(prerequisite, one-time per machine)*
 
-   In Claude Code:
-   ```
-   /plugin marketplace add fawad71/claude-langfuse-plugin
-   /plugin install claude-langfuse@claude-langfuse
-   ```
-   (Or install from a local folder — ask your platform team for the path.)
+   `uv` provisions the plugin's Python runtime + the `langfuse` SDK. It is
+   required on every platform.
 
-2. **Install `uv` once** *(one-time, per machine)*
+   - **macOS / Linux:**
+     ```
+     curl -LsSf https://astral.sh/uv/install.sh | sh
+     ```
+   - **Windows (PowerShell):**
+     ```
+     winget install --id=astral-sh.uv -e
+     ```
+     (or `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`)
 
-   `uv` is a small tool that manages the plugin's private Python environment.
-   Paste this into your Terminal, then restart Claude Code:
+   Restart Claude Code after installing so `uv` is on its PATH.
+
+2. **Add the plugin and install it**
+
+   In Claude Code (use the local folder, or your team's internal GitLab
+   marketplace URL):
    ```
-   curl -LsSf https://astral.sh/uv/install.sh | sh
+   /plugin marketplace add /path/to/claude-langfuse-plugin-repo
+   /plugin install claude-langfuse@kavak-gcc-tools
    ```
-   You can skip this — if `uv` is missing, the plugin shows you this exact line
-   the first time it needs it. Nothing else breaks.
 
 3. **Add your Langfuse settings to the project's `.env`**
 
@@ -37,15 +44,21 @@ Python environment. No `pip install`, no editing of settings files.
    CC_LANGFUSE_SECRET_KEY=sk-lf-...
    ```
 
-That's it. Your sessions appear in Langfuse, grouped under **Sessions**.
+That's it. Your sessions appear in Langfuse, grouped under **Sessions**. The
+first turn of a session warms up the runtime; tracing is fully active from then
+on.
 
 ## How it works
 
-- The plugin registers a **Stop hook** ([`hooks/hooks.json`](hooks/hooks.json))
-  that runs after each turn.
-- The hook script ([`bin/run-hook.sh`](bin/run-hook.sh)) finds `uv`, builds a
-  private virtualenv with the `langfuse` SDK (cached after the first run), and
-  hands the turn to the vendored tracer in [`vendor/`](vendor/).
+- The plugin registers a **Stop hook** and a **SessionStart warmup hook**
+  ([`hooks/hooks.json`](hooks/hooks.json)).
+- Both run a single, OS-agnostic command:
+  `uv run --no-project --with "langfuse>=3.0,<4.0" bin/run_hook.py`. `uv`
+  provisions Python + the SDK from its cache (no project `.venv` is created),
+  so the same command works on macOS, Linux, and Windows. The cross-platform
+  entry script ([`bin/run_hook.py`](bin/run_hook.py)) loads the vendored tracer
+  in [`vendor/`](vendor/) and hands it the turn. SessionStart runs it once in
+  `--warmup` mode so the first real turn doesn't pay the cold-start cost.
 - The tracer reads `CC_*` settings from your project's `.env` (walked up from
   the working directory), reconstructs each turn from the session transcript,
   and emits one Langfuse trace per turn:
@@ -71,10 +84,28 @@ That's it. Your sessions appear in Langfuse, grouped under **Sessions**.
 
 ### Fail-open by design
 
-If anything goes wrong (no `uv`, broken environment, missing `.env` keys), the
-hook **never blocks Claude Code**. It logs to `~/.claude/state/claude_langfuse.log`
-and, at most once per session, shows a short plain-English message telling you
-how to fix it.
+The hook **never blocks Claude Code**. The Python tracer swallows all errors,
+always exits 0, and logs to `~/.claude/state/claude_langfuse.log` (on Windows:
+`%USERPROFILE%\.claude\state\claude_langfuse.log`). If tracing is enabled but
+`.env` keys are missing, it shows a one-time plain-English message naming the
+missing variables.
+
+The one hard prerequisite is **`uv`** (step 1). If `uv` isn't installed/on PATH,
+the hook command can't start and Claude Code surfaces a generic hook error —
+install `uv` and restart.
+
+### Troubleshooting
+
+1. Check the log (last lines):
+   - macOS/Linux: `tail -n 20 ~/.claude/state/claude_langfuse.log`
+   - Windows (PowerShell): `Get-Content $env:USERPROFILE\.claude\state\claude_langfuse.log -Tail 20`
+2. Interpreting it:
+   - `Emitted turn … / Processed N turns` → working; if you don't see traces it's
+     a Langfuse **UI filter** (check project, time range — traces are backdated
+     to the real turn time — and `environment: default`).
+   - `Tracing not enabled` / `missing fields: CC_…` → fix your project's `.env`.
+   - Empty / no log → the hook isn't running. Confirm the plugin is enabled
+     (`/plugin`) and that `uv --version` works in your terminal.
 
 ## Configuration reference
 

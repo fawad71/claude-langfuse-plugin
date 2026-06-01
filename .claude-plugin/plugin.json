@@ -1,6 +1,6 @@
 {
   "name": "claude-langfuse",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Automatically traces every Claude Code turn to Langfuse. Reads Langfuse settings from your project's .env file and ships per-user, per-project usage traces — no manual setup beyond the .env.",
   "author": {
     "name": "Kavak GCC"

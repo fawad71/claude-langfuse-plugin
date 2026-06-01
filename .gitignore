@@ -1,5 +1,6 @@
-# Runtime: the uv-managed venv + throttle markers live here (created on first run)
+# Runtime: throttle markers + any stray uv envs
 .data/
+.venv/
 
 # Python
 __pycache__/
