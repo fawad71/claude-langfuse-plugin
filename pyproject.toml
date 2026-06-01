@@ -1,0 +1,22 @@
+# Dependency spec for the plugin's isolated, uv-managed runtime.
+#
+# bin/run-hook.sh builds a private virtualenv (under the plugin's data dir)
+# and installs the single dependency below into it. The vendored package
+# source under vendor/ is added to PYTHONPATH at runtime — it is not built
+# or installed, so no build backend is required here.
+#
+# Pin rationale: the vendored claude_code_langfuse_hook is verified against
+# Langfuse v3. The backdated-timestamp enhancement probes for the OTel
+# internals at runtime and falls back gracefully if they are absent, so the
+# hook works on whatever 3.x release uv resolves here.
+[project]
+name = "claude-langfuse-plugin-runtime"
+version = "0.1.0"
+description = "Isolated runtime dependencies for the claude-langfuse Claude Code plugin."
+requires-python = ">=3.10"
+dependencies = [
+  "langfuse>=3.0,<4.0",
+]
+
+[tool.uv]
+package = false

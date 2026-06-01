@@ -1,0 +1,14 @@
+# Runtime: the uv-managed venv + throttle markers live here (created on first run)
+.data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local env / secrets — never commit real keys
+.env
+
+# OS cruft
+.DS_Store

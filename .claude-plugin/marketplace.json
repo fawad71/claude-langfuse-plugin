@@ -1,0 +1,17 @@
+{
+  "name": "claude-langfuse",
+  "description": "Claude Code plugin marketplace for Langfuse tracing.",
+  "owner": {
+    "name": "Kavak GCC"
+  },
+  "plugins": [
+    {
+      "name": "claude-langfuse",
+      "source": {
+        "source": "github",
+        "repo": "fawad71/claude-langfuse-plugin"
+      },
+      "description": "Automatically traces every Claude Code turn to Langfuse."
+    }
+  ]
+}
