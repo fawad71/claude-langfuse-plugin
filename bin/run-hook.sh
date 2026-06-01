@@ -98,27 +98,49 @@ if [ -z "$UV_BIN" ]; then
   exit 0
 fi
 
-# --- 2. Ensure the venv + langfuse ------------------------------------------
-need_setup=0
-[ -x "$VENV_PY" ] || need_setup=1
-[ -f "$DEP_MARKER" ] || need_setup=1
+# --- 2. Ensure the venv + langfuse (built in the BACKGROUND) ----------------
+# A cold first build (fetch a managed Python + install langfuse) can take ~40s,
+# which exceeds the Stop-hook timeout. If we built it synchronously here the
+# hook would be killed mid-install every turn and never finish. Instead we
+# kick the build off detached, return immediately, and start tracing on the
+# first turn after it completes.
+BUILD_LOG="${DATA_DIR}/build.log"
+BUILD_LOCK="${VENV_DIR}.building"   # atomic dir-lock so only one build runs
 
-if [ "$need_setup" -eq 1 ]; then
-  log "setup: building venv at $VENV_DIR (uv=$UV_BIN)"
-  # `uv venv` will fetch a managed Python if none is present — so a machine
-  # with no system Python still works.
-  if ! "$UV_BIN" venv "$VENV_DIR" >>"$LOG_FILE" 2>&1; then
-    warn_user_once "venv-build-failed" \
-"Langfuse tracing could not create its Python environment (usually a transient network or disk issue). Restart Claude Code to retry; if it persists, share the log at $LOG_FILE."
-    exit 0
+if [ ! -x "$VENV_PY" ] || [ ! -f "$DEP_MARKER" ]; then
+  if [ -d "$BUILD_LOCK" ]; then
+    # A build is already running. If the lock is stale (>15 min) clear it so a
+    # wedged build can be retried; otherwise just wait it out quietly.
+    if find "$BUILD_LOCK" -maxdepth 0 -mmin +15 2>/dev/null | grep -q .; then
+      rm -rf "$BUILD_LOCK" 2>/dev/null || true
+    else
+      log "setup: build already in progress — skipping this fire"
+      exit 0
+    fi
   fi
-  if ! "$UV_BIN" pip install --python "$VENV_PY" "$DEP_SPEC" >>"$LOG_FILE" 2>&1; then
-    warn_user_once "venv-build-failed" \
-"Langfuse tracing could not install its dependencies (langfuse). Check your network/proxy and restart Claude Code to retry. Log: $LOG_FILE."
-    exit 0
+
+  if mkdir "$BUILD_LOCK" 2>/dev/null; then
+    log "setup: starting background venv build at $VENV_DIR (uv=$UV_BIN)"
+    # Detach so the build outlives this hook invocation. Pass paths via env to
+    # avoid quoting issues. `uv venv` fetches a managed Python if needed.
+    UV_BIN="$UV_BIN" VENV_DIR="$VENV_DIR" VENV_PY="$VENV_PY" \
+    DEP_SPEC="$DEP_SPEC" DEP_MARKER="$DEP_MARKER" \
+    BUILD_LOG="$BUILD_LOG" BUILD_LOCK="$BUILD_LOCK" \
+    nohup bash -c '
+      if "$UV_BIN" venv "$VENV_DIR" >>"$BUILD_LOG" 2>&1 \
+         && "$UV_BIN" pip install --python "$VENV_PY" "$DEP_SPEC" >>"$BUILD_LOG" 2>&1; then
+        : >"$DEP_MARKER"
+        echo "setup: venv ready" >>"$BUILD_LOG"
+      else
+        echo "setup: venv build FAILED — see above" >>"$BUILD_LOG"
+      fi
+      rm -rf "$BUILD_LOCK"
+    ' >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    warn_user_once "setup-started" \
+"Langfuse tracing is doing a one-time background setup (~1 min). Tracing starts automatically once it finishes; your work is unaffected."
   fi
-  : >"$DEP_MARKER" 2>/dev/null || true
-  log "setup: venv ready"
+  exit 0  # can't trace yet — build is (now) running
 fi
 
 # --- 3. Self-check: langfuse importable -------------------------------------
