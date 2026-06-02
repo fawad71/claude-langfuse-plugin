@@ -20,10 +20,18 @@ Required:
   CC_LANGFUSE_SECRET_KEY   Langfuse secret key
 
 Optional:
-  CC_LANGFUSE_DEBUG        "true" for verbose logging
-  CC_LANGFUSE_MAX_CHARS    truncation cap for prompt/response/tool bodies
-                           (default 20000; original length + sha256 are
-                           preserved in metadata)
+  CC_LANGFUSE_DEBUG          "true" for verbose logging
+  CC_LANGFUSE_MAX_CHARS      truncation cap for prompt/response/tool bodies
+                             (default 20000; original length + sha256 are
+                             preserved in metadata)
+  CC_LANGFUSE_TIMEOUT        HTTP request timeout in seconds for the Langfuse
+                             client (default 8). Bounds how long a single
+                             network call can hang.
+  CC_LANGFUSE_FLUSH_TIMEOUT  hard cap, in seconds, on the end-of-turn
+                             flush/shutdown (default 5). The drain runs on a
+                             daemon thread; if it exceeds this cap the hook
+                             returns anyway so a slow/unreachable Langfuse can
+                             never stall Claude Code.
 """
 
 from __future__ import annotations
@@ -49,6 +57,8 @@ SECRET_KEY_VAR = "CC_LANGFUSE_SECRET_KEY"
 
 DEBUG_VAR = "CC_LANGFUSE_DEBUG"
 MAX_CHARS_VAR = "CC_LANGFUSE_MAX_CHARS"
+TIMEOUT_VAR = "CC_LANGFUSE_TIMEOUT"
+FLUSH_TIMEOUT_VAR = "CC_LANGFUSE_FLUSH_TIMEOUT"
 
 ALL_VARS = (
     TRACE_ENABLED_VAR,
@@ -58,10 +68,14 @@ ALL_VARS = (
     SECRET_KEY_VAR,
     DEBUG_VAR,
     MAX_CHARS_VAR,
+    TIMEOUT_VAR,
+    FLUSH_TIMEOUT_VAR,
 )
 
 
 DEFAULT_MAX_CHARS = 20_000
+DEFAULT_REQUEST_TIMEOUT = 8  # seconds — per-HTTP-call cap on the Langfuse client
+DEFAULT_FLUSH_TIMEOUT = 5.0  # seconds — hard cap on the end-of-turn drain
 
 
 @dataclass(frozen=True)
@@ -75,6 +89,8 @@ class Config:
     langfuse_secret_key: str
     debug: bool
     max_chars: int
+    request_timeout: int
+    flush_timeout: float
 
     @property
     def is_complete(self) -> bool:
@@ -179,12 +195,20 @@ def resolve(start: Optional[Path] = None) -> Config:
             return v
         return file_vars.get(name, "")
 
-    # Parse max_chars defensively — bad value falls back to the default.
-    raw_max = pick(MAX_CHARS_VAR)
-    try:
-        max_chars = int(raw_max) if raw_max else DEFAULT_MAX_CHARS
-    except ValueError:
-        max_chars = DEFAULT_MAX_CHARS
+    # Parse numeric knobs defensively — a bad value falls back to the default.
+    def pick_number(name, default, cast):
+        raw = pick(name)
+        if not raw:
+            return default
+        try:
+            value = cast(raw)
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    max_chars = pick_number(MAX_CHARS_VAR, DEFAULT_MAX_CHARS, int)
+    request_timeout = pick_number(TIMEOUT_VAR, DEFAULT_REQUEST_TIMEOUT, int)
+    flush_timeout = pick_number(FLUSH_TIMEOUT_VAR, DEFAULT_FLUSH_TIMEOUT, float)
 
     return Config(
         project_root=project_root,
@@ -196,4 +220,6 @@ def resolve(start: Optional[Path] = None) -> Config:
         langfuse_secret_key=pick(SECRET_KEY_VAR),
         debug=_as_bool(pick(DEBUG_VAR)),
         max_chars=max_chars,
+        request_timeout=request_timeout,
+        flush_timeout=flush_timeout,
     )

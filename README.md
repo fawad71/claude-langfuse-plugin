@@ -82,6 +82,39 @@ on.
   instead of polluting the main turn sequence.
 - **Time-to-first-token:** the generation carries `completion_start_time`.
 
+### Checking your setup
+
+Not sure the hook is wired up or that the system requirements are met? Run the
+built-in diagnostic from inside Claude Code:
+
+```
+/langfuse-doctor
+```
+
+It checks, in order: **system requirements** (Python + the `langfuse` SDK via
+uv), your **`.env` config** (which `CC_*` vars are set / missing, keys masked),
+your **identity** (`git config user.email`), and **live connectivity** (it
+sends a synthetic trace and confirms Langfuse accepted it within the flush cap).
+It ends with a clear `READY` / `NOT READY` verdict and exactly what to fix.
+
+You can also run it directly (same command the slash command uses):
+
+```
+uv run --no-project --python 3.12 --with "langfuse>=3.0,<4.0" "$CLAUDE_PLUGIN_ROOT/bin/run_hook.py" --doctor
+```
+
+### Latency: never blocks a turn
+
+The Stop hook runs synchronously (Claude Code waits for it before the next
+turn), so the network send is strictly time-capped. Once a session is warmed
+up, the steady-state cost is the uv launch + SDK import (~0.3–0.5s) plus a
+**bounded flush**: the trace is drained on a daemon thread and waited on for at
+most `CC_LANGFUSE_FLUSH_TIMEOUT` seconds (default 5), with each HTTP call capped
+at `CC_LANGFUSE_TIMEOUT` (default 8). If Langfuse is slow or unreachable the
+hook returns at the cap instead of hanging — at worst a single trace is dropped,
+never your turn. (The first turn of the very first session pays a one-time
+runtime download; the SessionStart warmup hook absorbs that.)
+
 ### Fail-open by design
 
 The hook **never blocks Claude Code**. The Python tracer swallows all errors,
@@ -96,6 +129,8 @@ install `uv` and restart.
 
 ### Troubleshooting
 
+0. **Run `/langfuse-doctor` first** — it pinpoints most issues (missing uv,
+   incomplete `.env`, unreachable host) in one shot.
 1. Check the log (last lines):
    - macOS/Linux: `tail -n 20 ~/.claude/state/claude_langfuse.log`
    - Windows (PowerShell): `Get-Content $env:USERPROFILE\.claude\state\claude_langfuse.log -Tail 20`
@@ -118,6 +153,8 @@ install `uv` and restart.
 | `CC_LANGFUSE_SECRET_KEY` | yes | Langfuse secret key (`sk-lf-…`) |
 | `CC_LANGFUSE_DEBUG` | no | `true` for verbose logging |
 | `CC_LANGFUSE_MAX_CHARS` | no | truncation cap (default 20000) |
+| `CC_LANGFUSE_TIMEOUT` | no | per-HTTP-call timeout in seconds (default 8) |
+| `CC_LANGFUSE_FLUSH_TIMEOUT` | no | hard cap in seconds on the end-of-turn flush (default 5) |
 
 OS environment variables always win over `.env`.
 

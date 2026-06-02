@@ -195,15 +195,11 @@ def cmd_test(_args: argparse.Namespace) -> int:
     # Same v3 SDK pattern the hook itself uses — propagate_attributes
     # sets session_id / user_id / tags on the implicit trace, and
     # start_as_current_observation creates the root span.
-    from langfuse import Langfuse, propagate_attributes
+    from langfuse import propagate_attributes
 
-    from . import identity
+    from . import client as client_mod, identity
 
-    client = Langfuse(
-        public_key=cfg.langfuse_public_key,
-        secret_key=cfg.langfuse_secret_key,
-        host=cfg.langfuse_base_url,
-    )
+    client = client_mod.build_client(cfg)
     user_id = identity.resolve_user_id(cfg.project_root)
     trace_name = f"claude-langfuse:test:{cfg.project_name}"
 
@@ -220,12 +216,8 @@ def cmd_test(_args: argparse.Namespace) -> int:
                 metadata={"source": "claude-langfuse test"},
             ) as span:
                 span.update(output={"role": "assistant", "content": "pong"})
-        client.flush()
     finally:
-        try:
-            client.shutdown()
-        except Exception:
-            pass
+        client_mod.bounded_shutdown(client, cfg.flush_timeout)
 
     print("✓ Sent synthetic trace.")
     print(f"  Look for it at: {cfg.langfuse_base_url}")

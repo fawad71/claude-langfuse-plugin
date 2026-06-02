@@ -3,6 +3,32 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-06-01
+
+### Added
+- **`/langfuse-doctor` slash command** (`commands/langfuse-doctor.md`) and a
+  `--doctor` mode in `bin/run_hook.py`. Prints a health report — system
+  requirements (Python + langfuse SDK), `.env` config (set/missing `CC_*` vars,
+  keys masked), identity, and a **live connectivity** check (synthetic trace) —
+  ending in a `READY` / `NOT READY` verdict with exact next steps. Runs through
+  the real uv runtime, so it works the same on macOS/Linux/Windows.
+- **`CC_LANGFUSE_TIMEOUT`** (default 8s) — per-HTTP-call timeout on the Langfuse
+  client.
+- **`CC_LANGFUSE_FLUSH_TIMEOUT`** (default 5s) — hard cap on the end-of-turn
+  drain.
+
+### Changed
+- **Bounded, non-blocking flush (latency fix).** The end-of-turn send no longer
+  does an unbounded `flush()` + `shutdown()`. Both are replaced by a single
+  time-capped drain on a daemon thread (`bounded_shutdown`, in the new
+  `client.py`): the trace is waited on for at most `CC_LANGFUSE_FLUSH_TIMEOUT`
+  seconds and the hook returns regardless, so a slow/unreachable Langfuse can
+  never stall a turn (Stop hooks block the next user input). The redundant
+  double-flush is gone. Worst case on a dead host: one dropped trace, capped
+  wait — never a stalled turn.
+- The Langfuse client is now built in one place (`client.build_client`) with an
+  HTTP `timeout`, shared by the hook, the CLI `test`, and the doctor.
+
 ## [0.2.0] - 2026-06-01
 
 ### Changed

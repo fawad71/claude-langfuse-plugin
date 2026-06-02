@@ -38,6 +38,8 @@ def _cfg() -> Config:
         langfuse_secret_key="sk",
         debug=False,
         max_chars=20_000,
+        request_timeout=8,
+        flush_timeout=5.0,
     )
 
 

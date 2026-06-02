@@ -35,6 +35,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
+from . import client as client_mod
 from . import config as config_mod
 from . import identity, messaging, state as state_mod, tracer, transcript
 
@@ -97,10 +98,14 @@ def run() -> int:
     log = logging.getLogger("claude_code_langfuse_hook.hook")
 
     langfuse = None
+    # Captured before the try so the `finally` drain always has a bound, even
+    # if config resolution itself raised. Updated to the resolved value below.
+    flush_timeout = config_mod.DEFAULT_FLUSH_TIMEOUT
     try:
         payload = _read_payload()
         project_dir = _resolve_project_dir(payload)
         cfg = config_mod.resolve(project_dir)
+        flush_timeout = cfg.flush_timeout
 
         # Re-init logging at the requested level once we know the config.
         if cfg.debug:
@@ -135,19 +140,13 @@ def run() -> int:
             )
             return 0
 
-        # Lazy import — Langfuse SDK is only needed when we're actually tracing.
+        # Lazy build — the Langfuse SDK is only imported when we're actually
+        # tracing, and the client carries an HTTP timeout (cfg.request_timeout).
         try:
-            from langfuse import Langfuse
+            langfuse = client_mod.build_client(cfg)
         except ImportError as exc:
             log.warning("langfuse SDK not installed: %s — skipping.", exc)
             return 0
-
-        try:
-            langfuse = Langfuse(
-                public_key=cfg.langfuse_public_key,
-                secret_key=cfg.langfuse_secret_key,
-                host=cfg.langfuse_base_url,
-            )
         except Exception as exc:
             log.error("Failed to initialize Langfuse client: %s", exc)
             return 0
@@ -213,26 +212,19 @@ def run() -> int:
             state_mod.write_session_state(state, key, ss)
             state_mod.save_state(state)
 
-        try:
-            langfuse.flush()
-        except Exception as exc:
-            log.warning("langfuse.flush() failed: %s", exc)
-
         duration = time.time() - start
         log.info(
             "Processed %d turns in %.2fs (session=%s, user=%s, project=%s)",
             emitted, duration, session_id, user_id, cfg.project_name,
         )
-        if duration > 180:
-            log.warning("Hook took %.1fs (>3min) — consider optimizing.", duration)
 
     except Exception:
         log.error("Hook failed:\n%s", traceback.format_exc())
     finally:
+        # Single, time-capped drain. Replaces the old unbounded flush()+shutdown()
+        # pair so a slow/unreachable Langfuse can't stall the end of a turn
+        # (Stop hooks block the next user input until they return).
         if langfuse is not None:
-            try:
-                langfuse.shutdown()
-            except Exception:
-                pass
+            client_mod.bounded_shutdown(langfuse, flush_timeout, log)
 
     return 0
