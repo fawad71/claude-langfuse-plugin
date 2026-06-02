@@ -35,7 +35,12 @@ Windows**.
 
 3. **Add your Langfuse settings to the project's `.env`**
 
-   Copy the keys from [`.env.example`](.env.example) into your project's `.env`:
+   Easiest: run **`/setup`** in the project and answer the prompts — it writes
+   the values into your project's `.env` (creating it if needed, updating it in
+   place if it exists), then you can run `/test` to confirm.
+
+   Or do it by hand — copy the keys from [`.env.example`](.env.example) into
+   your project's `.env`:
    ```
    CC_TRACE_TO_LANGFUSE=true
    CC_PROJECT_NAME=my-project

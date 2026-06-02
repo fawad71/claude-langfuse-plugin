@@ -3,6 +3,17 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-06-02
+
+### Added
+- **`/setup` slash command** (`commands/setup.md`) + a `bin/setup_env.py` helper.
+  Asks for the required Langfuse settings once and writes them into the
+  project's `.env` — creating the file if it doesn't exist, or upserting into an
+  existing one (updates keys in place, appends new ones, preserves all other
+  lines, writes atomically, quotes values when needed). Targets the same `.env`
+  the hook reads (nearest existing `.env`, else the repo root). Masks secrets in
+  its output and warns if `.env` isn't gitignored.
+
 ## [0.4.1] - 2026-06-02
 
 ### Changed
