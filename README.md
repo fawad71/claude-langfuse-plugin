@@ -52,13 +52,18 @@ on.
 
 - The plugin registers a **Stop hook** and a **SessionStart warmup hook**
   ([`hooks/hooks.json`](hooks/hooks.json)).
-- Both run a single, OS-agnostic command:
-  `uv run --no-project --with "langfuse>=3.0,<4.0" bin/run_hook.py`. `uv`
-  provisions Python + the SDK from its cache (no project `.venv` is created),
-  so the same command works on macOS, Linux, and Windows. The cross-platform
-  entry script ([`bin/run_hook.py`](bin/run_hook.py)) loads the vendored tracer
-  in [`vendor/`](vendor/) and hands it the turn. SessionStart runs it once in
-  `--warmup` mode so the first real turn doesn't pay the cold-start cost.
+- Both run a single, OS-agnostic command via `uv`, which provisions Python +
+  the SDK from its cache (no project `.venv` is created), so the same command
+  works on macOS, Linux, and Windows. The cross-platform entry script
+  ([`bin/run_hook.py`](bin/run_hook.py)) loads the vendored tracer in
+  [`vendor/`](vendor/) and hands it the turn.
+- **SessionStart** runs `… --warmup` **online** once per session — this is the
+  only step allowed to touch the network, so it absorbs uv's occasional index
+  refresh up front (and downloads the runtime on first-ever use).
+- **Stop** runs `uv run --offline …` (cache-only) so the per-turn cost is
+  deterministic — uv never phones home mid-turn. If the cache is somehow cold
+  (e.g. plugin enabled mid-session), it self-heals with a one-time online
+  fallback (`… || uv run …`).
 - The tracer reads `CC_*` settings from your project's `.env` (walked up from
   the working directory), reconstructs each turn from the session transcript,
   and emits one Langfuse trace per turn:
@@ -88,10 +93,10 @@ Not sure the hook is wired up or that the system requirements are met? Run the
 built-in diagnostic from inside Claude Code:
 
 ```
-/langfuse-doctor
+/claude-langfuse:test
 ```
 
-It checks, in order: **system requirements** (Python + the `langfuse` SDK via
+(or just `/test` if the name is unambiguous in your setup). It checks, in order: **system requirements** (Python + the `langfuse` SDK via
 uv), your **`.env` config** (which `CC_*` vars are set / missing, keys masked),
 your **identity** (`git config user.email`), and **live connectivity** (it
 sends a synthetic trace and confirms Langfuse accepted it within the flush cap).
@@ -106,14 +111,21 @@ uv run --no-project --python 3.12 --with "langfuse>=3.0,<4.0" "$CLAUDE_PLUGIN_RO
 ### Latency: never blocks a turn
 
 The Stop hook runs synchronously (Claude Code waits for it before the next
-turn), so the network send is strictly time-capped. Once a session is warmed
-up, the steady-state cost is the uv launch + SDK import (~0.3–0.5s) plus a
-**bounded flush**: the trace is drained on a daemon thread and waited on for at
-most `CC_LANGFUSE_FLUSH_TIMEOUT` seconds (default 5), with each HTTP call capped
-at `CC_LANGFUSE_TIMEOUT` (default 8). If Langfuse is slow or unreachable the
-hook returns at the cap instead of hanging — at worst a single trace is dropped,
-never your turn. (The first turn of the very first session pays a one-time
-runtime download; the SessionStart warmup hook absorbs that.)
+turn), so two things are kept off the per-turn critical path:
+
+- **uv never refreshes its index mid-turn.** The Stop hook runs `--offline`
+  (cache-only, ~0.05–0.1s); uv's occasional ~20s+ network re-resolution happens
+  only during the online SessionStart warmup, never while you're working. This
+  was the cause of the rare "a single short turn took 20+ seconds" stall.
+- **The network send is time-capped.** The trace is drained on a daemon thread
+  and waited on for at most `CC_LANGFUSE_FLUSH_TIMEOUT` seconds (default 5),
+  with each HTTP call capped at `CC_LANGFUSE_TIMEOUT` (default 8). If Langfuse is
+  slow or unreachable the hook returns at the cap — at worst a single trace is
+  dropped, never your turn.
+
+Warm steady-state cost: uv launch + SDK import + ~0.4s of work ≈ **under a
+second** per turn. (The first turn of the very first session pays a one-time
+runtime download, which the warmup hook absorbs.)
 
 ### Fail-open by design
 
@@ -129,7 +141,7 @@ install `uv` and restart.
 
 ### Troubleshooting
 
-0. **Run `/langfuse-doctor` first** — it pinpoints most issues (missing uv,
+0. **Run `/claude-langfuse:test` first** — it pinpoints most issues (missing uv,
    incomplete `.env`, unreachable host) in one shot.
 1. Check the log (last lines):
    - macOS/Linux: `tail -n 20 ~/.claude/state/claude_langfuse.log`

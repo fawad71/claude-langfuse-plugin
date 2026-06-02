@@ -3,6 +3,23 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-06-02
+
+### Changed
+- **Offline-first Stop hook (the real per-turn latency fix).** The Stop hook now
+  runs `uv run --offline …` so uv resolves the environment from its cache only —
+  it never refreshes its package index over the network mid-turn. That network
+  refresh (occasional, ~20s+ on slow networks) was the cause of rare turns that
+  stalled for 20+ seconds even for a tiny reply; the work *inside* the hook was
+  always ~0.4s. A `|| uv run …` (online) fallback self-heals a cold cache. The
+  online refresh now happens only during the SessionStart warmup, off the
+  per-turn path.
+
+### Renamed
+- The `/langfuse-doctor` slash command is now **`/test`** (`commands/test.md`;
+  fully qualified `/claude-langfuse:test`). The underlying `--doctor` mode is
+  unchanged.
+
 ## [0.3.0] - 2026-06-01
 
 ### Added
