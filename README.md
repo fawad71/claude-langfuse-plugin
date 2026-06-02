@@ -30,7 +30,7 @@ Windows**.
    marketplace URL):
    ```
    /plugin marketplace add /path/to/claude-langfuse-plugin-repo
-   /plugin install claude-langfuse@kavak-gcc-tools
+   /plugin install claude-langfuse@claude-langfuse
    ```
 
 3. **Add your Langfuse settings to the project's `.env`**
@@ -57,13 +57,14 @@ on.
   works on macOS, Linux, and Windows. The cross-platform entry script
   ([`bin/run_hook.py`](bin/run_hook.py)) loads the vendored tracer in
   [`vendor/`](vendor/) and hands it the turn.
-- **SessionStart** runs `… --warmup` **online** once per session — this is the
-  only step allowed to touch the network, so it absorbs uv's occasional index
-  refresh up front (and downloads the runtime on first-ever use).
-- **Stop** runs `uv run --offline …` (cache-only) so the per-turn cost is
-  deterministic — uv never phones home mid-turn. If the cache is somehow cold
-  (e.g. plugin enabled mid-session), it self-heals with a one-time online
-  fallback (`… || uv run …`).
+- **Both hooks run `uv run --offline …`** (cache-only) so uv never phones home —
+  not at session start (warmup), not mid-turn (Stop). This makes both the
+  session-start and per-turn cost deterministic (~0.3–0.5s once the cache
+  exists). Each command has a `|| uv run …` online fallback that self-heals a
+  cold cache, so the one-time SDK/runtime download still happens automatically
+  on first install — it just never blocks the hot path afterward.
+- **SessionStart** runs `… --warmup` to import the SDK so the very first Stop
+  doesn't pay the import cost; **Stop** emits the traces.
 - The tracer reads `CC_*` settings from your project's `.env` (walked up from
   the working directory), reconstructs each turn from the session transcript,
   and emits one Langfuse trace per turn:
@@ -113,10 +114,11 @@ uv run --no-project --python 3.12 --with "langfuse>=3.0,<4.0" "$CLAUDE_PLUGIN_RO
 The Stop hook runs synchronously (Claude Code waits for it before the next
 turn), so two things are kept off the per-turn critical path:
 
-- **uv never refreshes its index mid-turn.** The Stop hook runs `--offline`
-  (cache-only, ~0.05–0.1s); uv's occasional ~20s+ network re-resolution happens
-  only during the online SessionStart warmup, never while you're working. This
-  was the cause of the rare "a single short turn took 20+ seconds" stall.
+- **uv never refreshes its index on the hot path.** Both hooks run `--offline`
+  (cache-only, ~0.05–0.1s of uv overhead); uv's occasional ~20–40s network
+  re-resolution can only happen via the online fallback on a genuinely cold
+  cache (first install). This was the cause of both the rare "a short turn took
+  20+ seconds" stall *and* slow session starts.
 - **The network send is time-capped.** The trace is drained on a daemon thread
   and waited on for at most `CC_LANGFUSE_FLUSH_TIMEOUT` seconds (default 5),
   with each HTTP call capped at `CC_LANGFUSE_TIMEOUT` (default 8). If Langfuse is

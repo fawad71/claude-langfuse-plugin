@@ -3,6 +3,16 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-06-02
+
+### Changed
+- **Offline-first SessionStart warmup (fixes slow session starts).** The warmup
+  hook now runs `uv run --offline …` too, matching the Stop hook. It was still
+  online, so whenever uv's index cache went stale the *next session start*
+  blocked 20–40s on a full network re-resolution of `langfuse`. Now it resolves
+  from cache (~0.3s) with a `|| uv run …` online fallback that self-heals a cold
+  cache on first install.
+
 ## [0.4.0] - 2026-06-02
 
 ### Changed
@@ -11,9 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   it never refreshes its package index over the network mid-turn. That network
   refresh (occasional, ~20s+ on slow networks) was the cause of rare turns that
   stalled for 20+ seconds even for a tiny reply; the work *inside* the hook was
-  always ~0.4s. A `|| uv run …` (online) fallback self-heals a cold cache. The
-  online refresh now happens only during the SessionStart warmup, off the
-  per-turn path.
+  always ~0.4s. A `|| uv run …` (online) fallback self-heals a cold cache.
 
 ### Renamed
 - The `/langfuse-doctor` slash command is now **`/test`** (`commands/test.md`;
