@@ -48,6 +48,11 @@ Follow these steps:
    succeeds with no package downloads; the `|| …` fallback covers a cold uv
    cache on a brand-new machine.)
 
+   If the shell doesn't support the `VAR=value command` prefix form (rare —
+   Claude Code uses Git Bash on Windows, which does), the helper also accepts
+   the values as trailing `KEY=VALUE` arguments instead, which is shell-agnostic:
+   `uv run … "${CLAUDE_PLUGIN_ROOT}/bin/setup_env.py" "<target-.env-path>" CC_PROJECT_NAME="<name>" CC_LANGFUSE_BASE_URL="<url>" …`
+
 4. **Confirm and finish.** Show the helper's summary (which masks secrets). If
    it warns that `.env` isn't gitignored, offer to add it. The hook reads `.env`
    fresh on the next turn, so no restart is needed. Offer to run

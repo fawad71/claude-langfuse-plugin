@@ -91,10 +91,25 @@ def _resolve_target(explicit: str | None) -> Path:
 
 
 def main() -> int:
-    explicit = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] not in ("", "-") else None
+    # Accept values two ways so we don't depend on a specific shell:
+    #   - exported env vars (CC_*=…) — used by the /setup command on Git Bash,
+    #   - or trailing KEY=VALUE arguments — shell-agnostic (bash/cmd/PowerShell).
+    # The first non-KEY=VALUE argument is the explicit target path.
+    explicit: str | None = None
+    cli_overrides: dict[str, str] = {}
+    for arg in sys.argv[1:]:
+        if "=" in arg:
+            key, _, val = arg.partition("=")
+            key = key.strip()
+            if key in ALL_KEYS:
+                cli_overrides[key] = val
+        elif explicit is None and arg not in ("", "-"):
+            explicit = arg
+
     target = _resolve_target(explicit)
 
     provided = {k: os.environ[k] for k in ALL_KEYS if os.environ.get(k)}
+    provided.update(cli_overrides)  # explicit args win over the environment
     if not provided:
         print(
             "No CC_* values found in the environment — nothing to write. "
