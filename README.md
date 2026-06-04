@@ -160,6 +160,22 @@ install `uv` and restart.
    - `Tracing not enabled` / `missing fields: CC_…` → fix your project's `.env`.
    - Empty / no log → the hook isn't running. Confirm the plugin is enabled
      (`/plugin`) and that `uv --version` works in your terminal.
+3. **`uv` works in your terminal but the hook says it can't find `uv`** (common
+   on **Windows**, and possible on macOS/Linux). A running process keeps the
+   PATH it was launched with, so if you installed `uv` *after* starting Claude
+   Code, its hooks won't see `uv` yet. Fixes, in order:
+   1. **Fully quit and reopen Claude Code** (restart the app, not just a new
+      terminal). If you launch it from a terminal, open a fresh one where
+      `uv --version` works, then start Claude Code from there.
+   2. Windows only: if it persists, **reboot** — Start-menu apps inherit PATH
+      from Explorer, which refreshes on logon/reboot.
+   3. Durable fix — add uv's bin dir to the PATH Claude Code passes to hooks, in
+      `~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`):
+      ```json
+      { "env": { "PATH": "C:\\Users\\<you>\\.local\\bin;${PATH}" } }
+      ```
+      (macOS/Linux: `{ "env": { "PATH": "$HOME/.local/bin:${PATH}" } }`.)
+      `~/.local/bin` is uv's default install location. Restart Claude Code after.
 
 ## Configuration reference
 

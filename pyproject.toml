@@ -15,7 +15,7 @@ version = "0.1.0"
 description = "Isolated runtime dependencies for the claude-langfuse Claude Code plugin."
 requires-python = ">=3.10"
 dependencies = [
-  "langfuse>=3.0,<4.0",
+  "langfuse>=4.0,<5.0",
 ]
 
 [tool.uv]

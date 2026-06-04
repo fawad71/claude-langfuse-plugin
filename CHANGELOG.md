@@ -3,6 +3,18 @@
 All notable changes to the `claude-langfuse` Claude Code plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-06-04
+
+### Fixed
+- **Upgrade langfuse SDK pin `>=3.0,<4.0` → `>=4.0,<5.0`** — eliminates the
+  up-to-10-minute dashboard delay. Langfuse's own documentation explicitly
+  states that traces from SDK versions < 4.0.0 (or bare OTEL exporters without
+  the ingestion-version header) can be delayed by up to 10 minutes in the UI,
+  while the API stores them within seconds. All 7 tests pass against 4.x with
+  zero code changes — the public API surface (`Langfuse`, `propagate_attributes`,
+  `start_as_current_observation`, `flush`, `shutdown`, backdating internals) is
+  fully compatible.
+
 ## [0.5.0] - 2026-06-02
 
 ### Added
